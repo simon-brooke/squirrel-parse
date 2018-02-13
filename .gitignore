@@ -1,2 +1,8 @@
 Leiningen.gitignore
 \.lein-repl-history
+
+\.nrepl-port
+
+target/classes/META-INF/maven/squirrel-parse/squirrel-parse/pom\.properties
+
+target/
