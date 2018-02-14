@@ -32,7 +32,7 @@
   "True if `x` is something which just clutters up the parse tree."
   [x]
   (and
-    (coll? x)(contains? #{:SPACE :OPT-SPACE :COMMENT :OPT-KW-DATA} (first x))))
+    (coll? x)(contains? #{:SPACE :OPT-SPACE :COMMENT :OPT-KW-DATA :TERMINATOR} (first x))))
 
 
 (defn remove-recursive
@@ -46,25 +46,8 @@
        %)
     (remove predicate collection)))
 
-(defn flatten-statements
-  [parse-tree]
-  (if
-    (and (coll? parse-tree) (not (empty? parse-tree)))
-    (if
-      (= (first parse-tree) :STATEMENTS)
-      (cond
-        (>= (count parse-tree) 3)
-        (cons (nth parse-tree 1) (flatten-statements (nth parse-tree 2)))
-        (>= (count parse-tree) 2)
-        (list (nth parse-tree 1))
-        true
-        ())
-      parse-tree)
-    parse-tree))
-
 
 (defn simplify [parse-tree]
-  (flatten-statements
-    (remove-recursive ignorable? parse-tree)))
+    (remove-recursive ignorable? parse-tree))
 
 
