@@ -4,4 +4,5 @@
   :license {:name "GNU General Public License,version 2.0 or (at your option) any later version"
             :url "https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html"}
   :dependencies [[org.clojure/clojure "1.8.0"]
+                 [clj-time "0.14.2"]
                  [instaparse "1.4.8"]])

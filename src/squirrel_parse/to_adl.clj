@@ -2,6 +2,8 @@
       :author "Simon Brooke"}
   squirrel-parse.to-adl
   (:require [clojure.xml :refer [emit-element]]
+            [clj-time.core :refer [now]]
+            [clj-time.format :refer [formatters unparse]]
             [squirrel-parse.parser :refer [parse]]
             [squirrel-parse.simplify :refer [simplify]]))
 
@@ -29,6 +31,12 @@
 ;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+
+(def xml-header
+  "XML header for ADL files."
+  "<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+  <!DOCTYPE application PUBLIC \"-//JOURNEYMAN//DTD ADL 1.4//EN\"
+    \"http://www.journeyman.cc/adl/stable/adl/schemas/adl-1.4.dtd\">")
 
 (def sql-datatype-to-adl-datatype
   "Map to convert SQL datatypes to the nearest ADL equivalent."
@@ -84,7 +92,7 @@
 (defn get-name
   "Return the value the first top-level :NAME element of this `subtree`."
   [subtree]
-  (let [name-elt (make-property subtree :NAME)]
+  (let [name-elt (get-first-child-of-type subtree :NAME)]
     (if name-elt (second name-elt))))
 
 (defn get-column-datatype
@@ -146,10 +154,21 @@
    (reduce table-definition-to-entity {} statements)))
 
 
-(defn to-adl [filename name]
-  (let [entities (table-definitions-to-entities (simplify (parse (slurp filename))))]
-    [{:tag :application
-      :name name
+(defn to-adl
+  "Take this `input` (filename, url, whatever) assumed to contain a stream of SQL
+  statements; convert them to ADL with this `application-name`; if `version` is
+  provided, tag it with that version number else tag it with a version number drawn
+  from the current date; if `output` is provided write it as XML to that output."
+  ([input application-name]
+   (to-adl input application-name (unparse (formatters :basic-date) (now))))
+  ([input application-name version]
+   (let [entities (table-definitions-to-entities (simplify (parse (slurp input))))]
+     {:tag :application
+      :attrs {:name application-name
+              :version version }
       :content (vals entities)}
-     nil]))
-
+     ))
+  ([input application-name version output]
+   (let [adl (to-adl input application-name version)]
+     (spit output (str xml-header "\n" (with-out-str (emit-element adl))))
+     adl)))
