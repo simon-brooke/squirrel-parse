@@ -212,26 +212,6 @@
 
 (def grammar (join "\n" (flatten (list basic-rules datatype-rules keyword-rules))))
 
-
-(defn ignorable?
-  "True if `x` is something which just clutters up the parse tree."
-  [x]
-  (and
-    (coll? x)(contains? #{:SPACE :OPT-SPACE :COMMENT :OPT-KW-DATA} (first x))))
-
-
-(defn remove-recursive
-  "Return a collection like this `collection` from which items which are matched
-  by this `predicate` have been removed at all levels."
-  [predicate collection]
-  (map
-    #(if
-       (coll? %)
-       (remove-recursive predicate %)
-       %)
-    (remove predicate collection)))
-
-
 (def parse
   "Parse the argument, assumed to be a string in the correct syntax, and return a parse tree."
   (insta/parser grammar))
