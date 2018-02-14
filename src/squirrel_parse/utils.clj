@@ -30,7 +30,8 @@
 
 (defn- make-unterminated-case-insensitive-match-rule
   "Make a grammar rule which matches this `token` case-insensitively,
-  without the terminal semi-colon"
+  without the terminal semi-colon. Keywords may always optionally be preceded
+  by whitespace and are usually succeeded by whitespace."
   [token]
   (let [subtokens (split token #"\s+")
         name (join "-" subtokens)]
@@ -38,8 +39,9 @@
            (flatten
              (list
                (upper-case name)
-               " := "
-               (join " SPACE " (map #(str "#'(?i)" % "'") subtokens)))))))
+               " := OPT-SPACE "
+               (join " SPACE " (map #(str "#'(?i)" % "'") subtokens))
+               " OPT-SPACE ")))))
 
 
 (defn make-case-insensitive-match-rule
@@ -65,8 +67,13 @@
 
 (defn- make-timezone-clause
   [match with-tz? with-precision?]
-  (join " SPACE "
-        (list (if with-precision? (str match " LPAR INT-VAL RPAR") match) (if with-tz? "KW-WITH" "KW-WITHOUT") "KW-TIME" "KW-ZONE")))
+  (join
+    " "
+    (list
+      (if with-precision? (str match " LPAR INT-VAL RPAR") match)
+      (if with-tz? "KW-WITH" "KW-WITHOUT")
+      "KW-TIME"
+      "KW-ZONE")))
 
 
 (defn make-with-or-without-timezone-datatype-rule
