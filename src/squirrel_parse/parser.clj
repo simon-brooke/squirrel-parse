@@ -34,8 +34,8 @@
   1. Add further Postrgresql keywords, or
   2. Start a new def for non-postgresql keywords."
   ["action" "add" "admin" "all" "alter" "as" "by" "cache" "cascade" "collate" "column" "comment" "connection" "constraint" "create"
-   "cycle" "data" "day" "default" "delete" "encrypted" "exists" "extension" "false" "foreign" "from" "full"
-   "go" "grant" "group" "hour" "if" "increment" "insert" "in" "into" "key" "limit" "match" "maxvalue" "minute" "minvalue"
+   "cycle" "data" "day" "default" "delete" "drop" "encrypted" "exists" "extension" "false" "foreign" "from" "full"
+   "go" "grant" "group" "hour" "if" "increment" "index" "insert" "in" "into" "key" "limit" "match" "maxvalue" "minute" "minvalue"
    "month" "no" "none" "not" "null" "off" "on" "only" "owned" "owner" "partial" "password" "primary"
    "references" "rename" "restrict" "revoke" "role" "schema" "second" "select" "sequence" "set"
    "simple" "start" "sysid" "table" "temp" "temporary" "time" "to" "true" "type" "unique"
@@ -66,7 +66,7 @@
 
 (def simple-datatypes
   "(Postgresql) datatypes which take no arguments or special syntax"
-  ["bigint" "bigserial" "bit" "boolean" "bytea"  "date" "double precision" "float" "integer" "money" "numeric" "real" "serial" "text" ])
+  ["bigint" "bigserial" "bit" "boolean" "bytea"  "date" "double precision" "float" "int" "integer" "money" "numeric" "real" "serial" "text" ])
 
 (def with-integer-parameter-datatypes
   "(Postgresql) datatypes which take a single integer parameter, typically the storage size"
@@ -111,8 +111,20 @@
   strings. Order is not very significant, but instaparse treats the first rule as special."
   (list
     "STATEMENTS := OPT-SPACE STATEMENT + ;"
-    "STATEMENT := TABLE-DECL | ALTER-STMT | SET-STMT | COMMENT | EXTENSION-DECL | SEQUENCE-DECL | ROLE-DECL | INSERT-STMT | PERMISSIONS-STMT;"
+    "STATEMENT := TABLE-DECL |
+                  ALTER-STMT |
+                  SET-STMT |
+                  COMMENT |
+                  DROP-STMT |
+                  EXTENSION-DECL |
+                  SEQUENCE-DECL |
+                  ROLE-DECL |
+                  INSERT-STMT |
+                  PERMISSIONS-STMT;"
     "ALTER-STMT := ALTER-TABLE | ALTER-SEQUENCE ;"
+
+    "DROP-STMT := KW-DROP OBJ-TYPE EXISTENCE QUAL-NAME TERMINATOR ;"
+    "OBJ-TYPE := KW-TABLE | KW-INDEX ;"
 
     "SET-STMT := KW-SET NAME EQUALS EXPRESSION TERMINATOR ;"
     "EXTENSION-DECL := KW-CREATE KW-EXTENSION EXISTENCE NAME KW-WITH KW-SCHEMA NAME TERMINATOR ;"
@@ -145,10 +157,13 @@
     ;; taken from https://www.postgresql.org/docs/10/static/sql-createtable.html
     ;; but by no means all of that is implemented.
     "TABLE-DECL := KW-CREATE PERMANENCE KW-TABLE EXISTENCE NAME LPAR TABLE-SPEC-ELEMENTS RPAR TERMINATOR ;"
-    "TABLE-SPEC-ELEMENTS := TABLE-SPEC-ELEMENT +; "
+    "TABLE-SPEC-ELEMENTS := TABLE-SPEC-ELT-COMMA * TABLE-SPEC-ELEMENT OPT-COMMA; "
+    "TABLE-SPEC-ELT-COMMA := TABLE-SPEC-ELEMENT COMMA ;"
     "TABLE-SPEC-ELEMENT := COLUMN-SPEC | TABLE-CONSTRAINT ;"
-    "COLUMN-SPEC := NAME SPACE DATATYPE COLUMN-CONSTRAINTS OPT-COMMA;"
-    "TABLE-CONSTRAINT := 'TODO' OPT-COMMA ;"
+    "COLUMN-SPEC := NAME SPACE DATATYPE COLUMN-CONSTRAINTS ;"
+    "TABLE-CONSTRAINT := KW-CONSTRAINT NAME TC-ELEMENT ;"
+    "TC-ELEMENT := TC-ELT-FK ;" ;; OR OTHERS...
+    "TC-ELT-FK := REFERENCES-CC ;"
     "COLUMN-CONSTRAINTS := COLUMN-CONSTRAINT * ;"
     "COLUMN-CONSTRAINT := KW-CONSTRAINT NAME COLUMN-CONSTRAINT | NOT-NULL-CC | NULL-CC | DEFAULT-CC | UNIQUE-CC | PRIMARY-CC | REFERENCES-CC ;"
     "NOT-NULL-CC := KW-NOT KW-NULL ;"
@@ -156,14 +171,14 @@
     "DEFAULT-CC := KW-DEFAULT EXPRESSION ;"
     "UNIQUE-CC := KW-UNIQUE INDEX-PARAMS ;"
     "PRIMARY-CC := KW-PRIMARY KW-KEY INDEX-PARAMS ;"
-    "REFERENCES-CC := KW-REFERENCES NAME LPAR NAMES RPAR REF-DIRECTIVES | KW-FOREIGN KW-KEY LPAR NAMES RPAR REFERENCES-CC;"
+    "REFERENCES-CC := KW-REFERENCES NAME LPAR NAMES RPAR REF-DIRECTIVES | KW-REFERENCES NAME REF-DIRECTIVES | KW-FOREIGN KW-KEY LPAR NAMES RPAR REFERENCES-CC;"
     "REF-DIRECTIVES := REF-DIRECTIVE * ;"
     "REF-DIRECTIVE := REF-MATCH | REF-ON-UPDATE | REF-ON-DELETE ;"
     "REF-MATCH := KW-MATCH MATCH-TYPE ;"
     "REF-ON-DELETE := KW-ON KW-DELETE REF-ACTION ;"
     "REF-ON-UPDATE := KW-ON KW-UPDATE REF-ACTION ;"
     "MATCH-TYPE := KW-FULL | KW-PARTIAL | KW-SIMPLE ;"
-    "INDEX-PARAMS := EXPRESSION ;"
+    "INDEX-PARAMS := EXPRESSION | '' ;"
     "REF-ACTION := KW-NO KW-ACTION | KW-RESTRICT | KW-CASCADE | KW-SET VALUE;"
     "EXISTENCE := '' |  KW-IF KW-NOT KW-EXISTS |  KW-IF KW-EXISTS ;"
     "PERMANENCE := '' | KW-TEMP | KW-TEMPORARY ;"
@@ -207,7 +222,8 @@
     "REVOKE-STMT := KW-REVOKE PERMISSIONS KW-ON OPT-KW-SCHEMA QUAL-NAME KW-FROM NAMES TERMINATOR;"
     "GRANT-STMT := KW-GRANT PERMISSIONS KW-ON OPT-KW-SCHEMA QUAL-NAME KW-TO NAMES TERMINATOR;"
 
-    "PERMISSIONS := PERMISSION COMMA * ;"
+    "PERMISSIONS := PERMISSION-COMMA * PERMISSION ;"
+    "PERMISSION-COMMA := PERMISSION COMMA ;"
     "PERMISSION := KW-ALL | KW-SELECT | KW-INSERT | KW-UPDATE | KW-DELETE ;"
 
     "OPT-KW-SCHEMA := KW-SCHEMA | '' ;"
@@ -228,7 +244,7 @@
     "LPAR := OPT-SPACE '(' OPT-SPACE ;"
     "RPAR := OPT-SPACE ')' OPT-SPACE ; "
     "EQUALS := OPT-SPACE '=' OPT-SPACE ;"
-    "OPT-COMMA := COMMA | '' ;"
+    "OPT-COMMA := COMMA | OPT-SPACE ;"
     ;; OPT-SPACE is optional space - it's acceptable as OPT-SPACE if there are no whitespace characters. Comments are
     ;; also acceptable wherever OPT-SPACE is acceptable
     "OPT-SPACE := #'\\s*' | OPT-SPACE COMMENT OPT-SPACE;"
@@ -236,7 +252,8 @@
     "SPACE := #'\\s+' | OPT-SPACE SPACE | SPACE OPT-SPACE ;"
     "QUAL-NAME := NAME | NAME DOT NAME ;"
     "NAMES := NAME | NAME COMMA NAMES ;"
-    "NAME := #'[a-zA-Z][a-zA-Z0-9_]*'"
+    "NAME := #'[a-zA-Z][a-zA-Z0-9_]*' | QUOTE-MK NAME QUOTE-MK ;"
+    "QUOTE-MK := '\"' ;"
     "TERMINATOR := SEMI-COLON | KW-GO | OPT-SPACE TERMINATOR OPT-SPACE;"
     "SEMI-COLON := ';';"))
 

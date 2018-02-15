@@ -39,6 +39,7 @@
                           :SPACE
                           :OPT-KW-DATA
                           :OPT-SPACE
+                          :QUOTE-MK
                           :TERMINATOR} (first x))))
 
 
@@ -91,7 +92,6 @@
         :ONLY
         :OPT-KW-SCHEMA
         :PERMISSION
-        :PERMISSIONS
         :PERMISSIONS-STMT
         :REF-DIRECTIVE
         :RO-BYPASSRLS
@@ -105,7 +105,9 @@
         :SEQ-SPEC-ELEMENT
         :STATEMENT
         :TABLE-SPEC-ELEMENT
+        :TC-ELEMENT
         :VALUE) (simplify-second-of-two tree)
+      (:PERMISSION-COMMA) (in-simplify (nth tree 1))
       (:ROLE) (first tree)
       (remove nil? (map in-simplify tree)))
     tree))
