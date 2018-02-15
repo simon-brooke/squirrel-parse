@@ -53,7 +53,7 @@
    :DT-NUMERIC           :real
    :DT-REAL              :real
    :DT-SERIAL            :integer
-   :DT-TEXT              :string
+   :DT-TEXT              :text
    :DT-CHAR              :string
    :DT-CHARACTER         :string
    :DT-CHARACTER-VARYING :string
@@ -71,9 +71,7 @@
 (defn is-create-table-statement?
   "Is this statement a create table statement?"
   [statement]
-  (and
-    (is-subtree-of-type? statement :STATEMENT)
-    (is-subtree-of-type? (second statement) :TABLE-DECL)))
+  (is-subtree-of-type? statement :TABLE-DECL))
 
 (defn get-children-of-type [subtree type]
   (if
@@ -129,10 +127,8 @@
           nil?
           (map
             #(if
-               (and
-                 (is-subtree-of-type? % :TABLE-SPEC-ELEMENT)
-                 (is-subtree-of-type? (second %) :COLUMN-SPEC))
-               (second %))
+               (is-subtree-of-type? % :COLUMN-SPEC)
+               %)
             (get-first-child-of-type table-decl :TABLE-SPEC-ELEMENTS)))))})
 
 
@@ -142,9 +138,8 @@
   [entity-map statement]
   (if
     (is-create-table-statement? statement)
-    (let [table-decl (second statement)
-          table-name (get-name table-decl)]
-      (merge entity-map {table-name (make-entity table-decl)}))
+    (let [table-name (get-name statement)]
+      (merge entity-map {table-name (make-entity statement)}))
     entity-map))
 
 (defn table-definitions-to-entities
@@ -152,6 +147,10 @@
    entities indexed by name."
   ([statements]
    (reduce table-definition-to-entity {} statements)))
+
+(defn extract-security-groups-from-statements
+  [statements]
+  nil)
 
 
 (defn to-adl

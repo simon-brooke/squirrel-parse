@@ -33,13 +33,20 @@
   "Keywords from the subset of Postgresql I have so far needed to support. Feel free to either
   1. Add further Postrgresql keywords, or
   2. Start a new def for non-postgresql keywords."
-  ["action" "add" "all" "alter" "as" "by" "cache" "cascade" "collate" "column" "comment" "constraint" "create"
-   "cycle" "data" "day" "default" "delete" "exists" "extension" "false" "foreign" "from" "full"
-   "go" "grant" "hour" "if" "increment" "insert" "into" "key" "match" "maxvalue" "minute" "minvalue"
-   "month" "no" "none" "not" "null" "off" "on" "only" "owned" "owner" "partial" "primary"
-   "references" "rename" "restrict" "revoke" "schema" "second" "select" "sequence" "set"
-   "simple" "start" "table" "temp" "temporary" "time" "to" "true" "type" "unique"
-   "update" "using" "values" "where" "with" "without" "year" "zone"])
+  ["action" "add" "admin" "all" "alter" "as" "by" "cache" "cascade" "collate" "column" "comment" "connection" "constraint" "create"
+   "cycle" "data" "day" "default" "delete" "encrypted" "exists" "extension" "false" "foreign" "from" "full"
+   "go" "grant" "group" "hour" "if" "increment" "insert" "in" "into" "key" "limit" "match" "maxvalue" "minute" "minvalue"
+   "month" "no" "none" "not" "null" "off" "on" "only" "owned" "owner" "partial" "password" "primary"
+   "references" "rename" "restrict" "revoke" "role" "schema" "second" "select" "sequence" "set"
+   "simple" "start" "sysid" "table" "temp" "temporary" "time" "to" "true" "type" "unique"
+   "until" "update" "user" "using" "valid" "values" "where" "with" "without" "year" "zone"
+
+   ;; the next group are all role options. I'm not sure whether or not they
+   ;; really count as keywords. I'm also not sure whether 'NO' should be created
+   ;; as a special case insensitive prefix, which would save half of these.
+   "bypassrls" "createdb" "createrole" "inherit" "login" "nobypassrls" "nocreatedb"
+   "nocreaterole" "noinherit" "nologin" "noreplication" "nosuperuser" "replication" "superuser"
+   ])
 
 
 (def keyword-rules
@@ -104,7 +111,7 @@
   strings. Order is not very significant, but instaparse treats the first rule as special."
   (list
     "STATEMENTS := OPT-SPACE STATEMENT + ;"
-    "STATEMENT := TABLE-DECL | ALTER-STMT | SET-STMT | COMMENT | EXTENSION-DECL | SEQUENCE-DECL | INSERT-STMT | PERMISSIONS-STMT;"
+    "STATEMENT := TABLE-DECL | ALTER-STMT | SET-STMT | COMMENT | EXTENSION-DECL | SEQUENCE-DECL | ROLE-DECL | INSERT-STMT | PERMISSIONS-STMT;"
     "ALTER-STMT := ALTER-TABLE | ALTER-SEQUENCE ;"
 
     "SET-STMT := KW-SET NAME EQUALS EXPRESSION TERMINATOR ;"
@@ -172,6 +179,30 @@
     "ADD-CONSTRAINT := KW-ADD COLUMN-CONSTRAINT ;"
     "OPT-KW-DATA := KW-DATA | '' ;"
 
+    ;; from https://www.postgresql.org/docs/current/static/sql-createrole.html
+    ;;      https://www.postgresql.org/docs/10/static/sql-createuser.html
+    "ROLE-DECL := KW-CREATE ROLE NAME ROLE-OPTIONS TERMINATOR;"
+    "ROLE := KW-GROUP | KW-ROLE | KW-USER ;"
+    "ROLE-OPTIONS := KW-WITH ROLE-OPTIONS | OPT-SPACE ROLE-OPTION *;"
+    "ROLE-OPTION := RO-SUPERUSER | RO-CREATEDB | RO-CREATEROLE | RO-INHERIT | RO-REPLIC | RO-BYPASSRLS | RO-LOGIN| RO-CONN-LIMIT | RO-PASSWORD | RO-TIMEOUT | RO-IN-ROLE | RO-ROLE | RO-ADMIN | RO-USER | RO-SYSID;"
+    "RO-SUPERUSER := KW-SUPERUSER | KW-NOSUPERUSER ;"
+    "RO-CREATEDB := KW-CREATEDB | KW-NOCREATEDB ;"
+    "RO-CREATEROLE := KW-CREATEROLE | KW-NOCREATEROLE ;"
+    "RO-INHERIT := KW-INHERIT | KW-NOINHERIT ;"
+    "RO-REPLIC := KW-REPLICATION | KW-NOREPLICATION ;"
+    "RO-BYPASSRLS := KW-BYPASSRLS | KW-NOBYPASSRLS ;"
+    "RO-LOGIN := KW-LOGIN | KW-NOLOGIN ;"
+    "RO-CONN-LIMIT := KW-CONNECTION KW-LIMIT INT-VAL ;"
+    "RO-PASSWORD := KW-PASSWORD CHAR-VAL | KW-ENCRYPTED KW-PASSWORD CHAR-VAL ;"
+    ;; The value here is actually a date/time value, but that's a level of detail we don't need.
+    "RO-TIMEOUT := KW-VALID KW-UNTIL CHAR-VAL ;"
+    "RO-IN-ROLE := KW-IN KW-ROLE NAMES | KW-IN KW-GROUP NAMES ;"
+    "RO-ROLE := KW-ROLE NAMES ;"
+    "RO-ADMIN := KW-ADMIN NAMES ;"
+    "RO-USER := KW-USER NAMES ;"
+    "RO-SYSID := KW-SYSID CHAR-VAL ;"
+
+
     "PERMISSIONS-STMT := REVOKE-STMT | GRANT-STMT;"
     "REVOKE-STMT := KW-REVOKE PERMISSIONS KW-ON OPT-KW-SCHEMA QUAL-NAME KW-FROM NAMES TERMINATOR;"
     "GRANT-STMT := KW-GRANT PERMISSIONS KW-ON OPT-KW-SCHEMA QUAL-NAME KW-TO NAMES TERMINATOR;"
@@ -216,4 +247,4 @@
   "Parse the argument, assumed to be a string in the correct syntax, and return a parse tree."
   (insta/parser grammar))
 
-(def parse-comment (insta/parser "COMMENT := #'--[^\\n\\r]*' ;"))
+

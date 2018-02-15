@@ -28,12 +28,37 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
+(declare in-simplify)
+
+
 (defn ignorable?
   "True if `x` is something which just clutters up the parse tree."
   [x]
   (and
-    (coll? x)(contains? #{:SPACE :OPT-SPACE :COMMENT :OPT-KW-DATA :TERMINATOR} (first x))))
+    (coll? x)(contains? #{:COMMENT
+                          :SPACE
+                          :OPT-KW-DATA
+                          :OPT-SPACE
+                          :TERMINATOR} (first x))))
 
+
+(defn simplify-second-of-two
+  "There are a number of possible simplifications such that if the `tree` has
+  only two elements, the second is semantically sufficient."
+  [tree]
+  (if
+    (and (= (count tree) 2) (coll? (nth tree 1)))
+    (in-simplify (nth tree 1))
+    tree))
+
+(defn simplify-second-if-not-empty
+  "Like `simplify-second-of-two`, but returns nil if there is no second element
+  of `tree`."
+  [tree]
+  (if
+    (= (count tree) 1)
+    nil
+    (simplify-second-of-two tree)))
 
 (defn remove-recursive
   "Return a collection like this `collection` from which items which are matched
@@ -47,7 +72,49 @@
     (remove predicate collection)))
 
 
-(defn simplify [parse-tree]
-    (remove-recursive ignorable? parse-tree))
+(defn- in-simplify
+  "Simplify/canonicalise this `tree`, presumed already to have had ignorables
+  removed. Opportunistically replace complex fragments with
+  semantically identical simpler fragments"
+  [tree]
+  (if
+    (coll? tree)
+    (case (first tree)
+      (:STATEMENTS) (remove nil? (map in-simplify (rest tree)))
+      (:EXISTENCE
+        :PERMANENCE) (simplify-second-if-not-empty tree)
+      (:ALTER-COL-SPEC
+        :ALTER-SEQ-ELEMENT
+        :ALTER-STMT
+        :ALTER-TABLE-ELEMENT
+        :MATCH-TYPE
+        :ONLY
+        :OPT-KW-SCHEMA
+        :PERMISSION
+        :PERMISSIONS
+        :PERMISSIONS-STMT
+        :REF-DIRECTIVE
+        :RO-BYPASSRLS
+        :RO-CREATEDB
+        :RO-CREATEROLE
+        :RO-INHERIT
+        :RO-LOGIN
+        :RO-REPLIC
+        :RO-SUPERUSER
+        :ROLE-OPTION
+        :SEQ-SPEC-ELEMENT
+        :STATEMENT
+        :TABLE-SPEC-ELEMENT
+        :VALUE) (simplify-second-of-two tree)
+      (:ROLE) (first tree)
+      (remove nil? (map in-simplify tree)))
+    tree))
+
+
+(defn simplify
+  "Simplify/canonicalise this `tree`. Opportunistically replace complex fragments with
+  semantically identical simpler fragments"
+  [parse-tree]
+  (in-simplify (remove-recursive ignorable? parse-tree)))
 
 
