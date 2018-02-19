@@ -33,13 +33,29 @@
   "Keywords from the subset of Postgresql I have so far needed to support. Feel free to either
   1. Add further Postrgresql keywords, or
   2. Start a new def for non-postgresql keywords."
-  ["action" "add" "admin" "all" "alter" "as" "by" "cache" "cascade" "collate" "column" "comment" "connection" "constraint" "create"
-   "cycle" "data" "day" "default" "delete" "drop" "encrypted" "exists" "extension" "false" "foreign" "from" "full"
-   "go" "grant" "group" "hour" "if" "increment" "index" "insert" "in" "into" "key" "limit" "match" "maxvalue" "minute" "minvalue"
-   "month" "no" "none" "not" "null" "off" "on" "only" "owned" "owner" "partial" "password" "primary"
-   "references" "rename" "restrict" "revoke" "role" "schema" "second" "select" "sequence" "set"
-   "simple" "start" "sysid" "table" "temp" "temporary" "time" "to" "true" "type" "unique"
-   "until" "update" "user" "using" "valid" "values" "where" "with" "without" "year" "zone"
+  ["action" "add" "admin" "all" "alter" "as" "asc"
+   "by"
+   "cache" "cascade" "collate" "collation" "column" "comment" "concurrently" "connection" "constraint" "create" "cycle"
+   "data" "day" "default" "delete" "desc" "drop"
+   "encrypted" "exists" "extension"
+   "false" "first" "foreign" "from" "full"
+   "go" "grant" "group"
+   "hour"
+   "if" "increment" "index" "insert" "in" "into"
+   "key"
+   "last" "limit"
+   "match" "maxvalue" "method" "minute" "minvalue" "month"
+   "no" "none" "not" "null" "nulls"
+   "off" "on" "only" "owned" "owner"
+   "partial" "password" "primary"
+   "references" "rename" "restrict" "revoke" "role"
+   "schema" "second" "select" "sequence" "set" "simple" "start" "sysid"
+   "table" "temp" "temporary" "time" "to" "true" "type"
+   "unique" "until" "update" "user" "using"
+   "valid" "values"
+   "where" "with" "without"
+   "year"
+   "zone"
 
    ;; the next group are all role options. I'm not sure whether or not they
    ;; really count as keywords. I'm also not sure whether 'NO' should be created
@@ -111,17 +127,18 @@
   strings. Order is not very significant, but instaparse treats the first rule as special."
   (list
     "STATEMENTS := OPT-SPACE STATEMENT + ;"
-    "STATEMENT := TABLE-DECL |
+    "STATEMENT := CREATE-STMT |
                   ALTER-STMT |
                   SET-STMT |
                   COMMENT |
                   DROP-STMT |
                   EXTENSION-DECL |
                   SEQUENCE-DECL |
-                  ROLE-DECL |
                   INSERT-STMT |
                   PERMISSIONS-STMT;"
     "ALTER-STMT := ALTER-TABLE | ALTER-SEQUENCE ;"
+
+    "CREATE-STMT := CREATE-TABLE-STMT | CREATE-INDEX-STMT | CREATE-ROLE-STMT ;"
 
     "DROP-STMT := KW-DROP OBJ-TYPE EXISTENCE QUAL-NAME TERMINATOR ;"
     "OBJ-TYPE := KW-TABLE | KW-INDEX ;"
@@ -156,7 +173,7 @@
 
     ;; taken from https://www.postgresql.org/docs/10/static/sql-createtable.html
     ;; but by no means all of that is implemented.
-    "TABLE-DECL := KW-CREATE PERMANENCE KW-TABLE EXISTENCE NAME LPAR TABLE-SPEC-ELEMENTS RPAR TERMINATOR ;"
+    "CREATE-TABLE-STMT := KW-CREATE PERMANENCE KW-TABLE EXISTENCE NAME LPAR TABLE-SPEC-ELEMENTS RPAR TERMINATOR ;"
     "TABLE-SPEC-ELEMENTS := TABLE-SPEC-ELT-COMMA * TABLE-SPEC-ELEMENT OPT-COMMA; "
     "TABLE-SPEC-ELT-COMMA := TABLE-SPEC-ELEMENT COMMA ;"
     "TABLE-SPEC-ELEMENT := COLUMN-SPEC | TABLE-CONSTRAINT ;"
@@ -180,11 +197,10 @@
     "MATCH-TYPE := KW-FULL | KW-PARTIAL | KW-SIMPLE ;"
     "INDEX-PARAMS := EXPRESSION | '' ;"
     "REF-ACTION := KW-NO KW-ACTION | KW-RESTRICT | KW-CASCADE | KW-SET VALUE;"
-    "EXISTENCE := '' |  KW-IF KW-NOT KW-EXISTS |  KW-IF KW-EXISTS ;"
+    "EXISTENCE := '' |  KW-IF KW-NOT KW-EXISTS | KW-IF KW-EXISTS ;"
     "PERMANENCE := '' | KW-TEMP | KW-TEMPORARY ;"
-    "ONLY := KW-ONLY | '' ;"
 
-    "ALTER-TABLE := KW-ALTER KW-TABLE EXISTENCE ONLY QUAL-NAME OPT-SPACE ALTER-TABLE-ELEMENTS TERMINATOR ;"
+    "ALTER-TABLE := KW-ALTER KW-TABLE EXISTENCE  KW-ONLY ? QUAL-NAME OPT-SPACE ALTER-TABLE-ELEMENTS TERMINATOR ;"
     "ALTER-TABLE-ELEMENTS := ALTER-TABLE-ELEMENT + ;"
     "ALTER-TABLE-ELEMENT :=  OWNER-TO | ALTER-COLUMN | ADD-CONSTRAINT;"
     "ALTER-COLUMN := KW-ALTER KW-COLUMN NAME ALTER-COL-SPEC ;"
@@ -192,11 +208,19 @@
     "ALTER-COL-TYPE := KW-SET OPT-KW-DATA KW-TYPE DATATYPE | ALTER-COL-TYPE KW-COLLATE NAME | ALTER-COL-TYPE KW-USING EXPRESSION ;"
     "ALTER-COL-DFLT := KW-SET KW-DEFAULT EXPRESSION ;"
     "ADD-CONSTRAINT := KW-ADD COLUMN-CONSTRAINT ;"
-    "OPT-KW-DATA := KW-DATA | '' ;"
+
+    "CREATE-INDEX-STMT := KW-CREATE OPT-KW-UNIQUE KW-INDEX OPT-KW-CONCURRENTLY NAME ID-METHOD ? KW-ON QUAL-NAME LPAR NAMES RPAR INDEX-DIRECTIVES TERMINATOR;"
+    "INDEX-DIRECTIVES := INDEX-DIRECTIVE *;"
+    "INDEX-DIRECTIVE := ID-COLLATION ;"
+
+    "ID-COLLATION := KW-COLLATION NAME "
+    "ID-METHOD := KW-USING KW-METHOD NAME ;"
+    "ID-NULLS := KW-NULLS KW-FIRST | KW-NULLS KW-LAST;"
+    "ID-SORT-ORDER := KW-ASC | KW-DESC ;"
 
     ;; from https://www.postgresql.org/docs/current/static/sql-createrole.html
     ;;      https://www.postgresql.org/docs/10/static/sql-createuser.html
-    "ROLE-DECL := KW-CREATE ROLE NAME ROLE-OPTIONS TERMINATOR;"
+    "CREATE-ROLE-STMT := KW-CREATE ROLE NAME ROLE-OPTIONS TERMINATOR;"
     "ROLE := KW-GROUP | KW-ROLE | KW-USER ;"
     "ROLE-OPTIONS := KW-WITH ROLE-OPTIONS | OPT-SPACE ROLE-OPTION *;"
     "ROLE-OPTION := RO-SUPERUSER | RO-CREATEDB | RO-CREATEROLE | RO-INHERIT | RO-REPLIC | RO-BYPASSRLS | RO-LOGIN| RO-CONN-LIMIT | RO-PASSWORD | RO-TIMEOUT | RO-IN-ROLE | RO-ROLE | RO-ADMIN | RO-USER | RO-SYSID;"
@@ -226,7 +250,10 @@
     "PERMISSION-COMMA := PERMISSION COMMA ;"
     "PERMISSION := KW-ALL | KW-SELECT | KW-INSERT | KW-UPDATE | KW-DELETE ;"
 
+    "OPT-KW-CONCURRENTLY := KW-CONCURRENTLY | '' ;"
+    "OPT-KW-DATA := KW-DATA | '' ;"
     "OPT-KW-SCHEMA := KW-SCHEMA | '' ;"
+    "OPT-KW-UNIQUE := KW-UNIQUE | '' ;"
 
     "COMMENT := KW-COMMENT #'[^;]*' TERMINATOR |#'--[^\\n\\r]*' ;"
     ;; TODO: much more to do here!
