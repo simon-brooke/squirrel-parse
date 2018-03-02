@@ -5,7 +5,8 @@
             [clj-time.core :refer [now]]
             [clj-time.format :refer [formatters unparse]]
             [squirrel-parse.parser :refer [parse]]
-            [squirrel-parse.simplify :refer [simplify]]))
+            [squirrel-parse.simplify :refer [simplify]]
+            [squirrel-parse.utils :refer [deep-merge]]))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -68,10 +69,43 @@
   [subtree type]
   (and (coll? subtree) (= (first subtree) type)))
 
+
+(defn subtree?
+  "Does this `subtree` appear to be a subtree of a parse tree?"
+  [subtree]
+  (and (seq? subtree) (keyword? (first subtree))))
+
+
+(defn subtree-to-map
+  "Converts `subtree` to a map. **Note** that this will return unexpected
+  results if the subtree contains repeating entries of the same type
+  (i.e. having the same initial keyword), as only the last of such
+  a sequence will be retained. Use with care."
+  [subtree]
+  (if
+    (subtree? subtree)
+    (if
+      (and
+        (> (count subtree) 1)
+        (reduce #(and %1 %2) (map seq? (rest subtree))))
+      {(first subtree) (reduce merge {} (map subtree-to-map (rest subtree)))}
+      {(first subtree) (first (rest subtree))})
+    subtree))
+
+
+(defn map-to-xml
+  [m]
+  (if
+    (map? m)
+    (interleave (keys m) (map map-to-xml (vals m)))
+    m))
+
+
+
 (defn is-create-table-statement?
   "Is this statement a create table statement?"
   [statement]
-  (is-subtree-of-type? statement :TABLE-DECL))
+  (is-subtree-of-type? statement :CREATE-TABLE-STMT))
 
 (defn get-children-of-type [subtree type]
   (if
@@ -84,14 +118,17 @@
              %)
           subtree))))
 
+
 (defn get-first-child-of-type [subtree type]
   (first (get-children-of-type subtree type)))
+
 
 (defn get-name
   "Return the value the first top-level :NAME element of this `subtree`."
   [subtree]
   (let [name-elt (get-first-child-of-type subtree :NAME)]
     (if name-elt (second name-elt))))
+
 
 (defn get-column-datatype
   "Get the datatype of this column specification."
@@ -100,27 +137,32 @@
         sql-datatype (first (second datatype-spec))]
     (sql-datatype-to-adl-datatype sql-datatype)))
 
+
 (defn make-property
   "Make an ADL property representing this column specification."
   [column-spec]
   (if
     (is-subtree-of-type? (second column-spec) :COLUMN-SPEC)
     (make-property (second column-spec))
-    {:tag :property
-     :attrs
-     {
-       :name (get-name column-spec)
-       :type (get-column-datatype column-spec)
-       }}
-    ))
+    (let [name (get-name column-spec)]
+      {(keyword name)
+       {:tag :property
+        :attrs
+        {
+          :name (get-name column-spec)
+          :type (get-column-datatype column-spec)
+          }}}
+      )))
+
 
 (defn make-entity [table-decl]
   "Make an ADL entity representing this table declaration"
   {:tag :entity
-    :name (get-name table-decl)
-    :content
+   :name (get-name table-decl)
+   :content
+   {:properties
     (apply
-      vector
+      merge
       (map
         make-property
         (remove
@@ -129,10 +171,11 @@
             #(if
                (is-subtree-of-type? % :COLUMN-SPEC)
                %)
-            (get-first-child-of-type table-decl :TABLE-SPEC-ELEMENTS)))))})
+            (get-first-child-of-type table-decl
+                                     :TABLE-SPEC-ELEMENTS)))))}})
 
 
-(defn table-definition-to-entity
+(defn table-definition-to-map
   "Return a map like this `map` with, if this `statement` is a table declaration,
   an ADL entity representing that table added to it."
   [entity-map statement]
@@ -142,15 +185,119 @@
       (merge entity-map {table-name (make-entity statement)}))
     entity-map))
 
+
+(defn is-column-constraint-statement-of-type?
+  [statement key]
+  (and
+    (is-subtree-of-type? statement :ALTER-TABLE)
+    (let [sm (subtree-to-map statement)]
+      (or
+        (key
+          (:COLUMN-CONSTRAINT
+            (:ADD-CONSTRAINT
+              (:ALTER-TABLE-ELEMENTS
+                (:ALTER-TABLE sm)))))
+        (key
+          (:COLUMN-CONSTRAINT
+            (:COLUMN-CONSTRAINT
+              (:ADD-CONSTRAINT
+                (:ALTER-TABLE-ELEMENTS
+                  (:ALTER-TABLE sm))))))
+        ))))
+
+
+(defn is-foreign-key-statement?
+  "Returns non-nil (actually the relevant fragment) if `statement` is an
+  'alter table... add foreign key' statement"
+  [statement]
+  (is-column-constraint-statement-of-type? statement :REFERENCES-CC))
+
+
+(defn is-primary-key-statement?
+  [statement]
+  (is-column-constraint-statement-of-type? statement :PRIMARY-CC))
+
+
+(defn decorate-with-relationship
+  [entity-map statement]
+  (if
+    (is-foreign-key-statement? statement)
+    (let [sm (subtree-to-map (is-foreign-key-statement? statement))
+          table (:name entity-map)
+          ns-table (:NAME (:QUAL-NAME (:ALTER-TABLE (subtree-to-map statement))))
+          ns-cols (:NAME (:NAMES sm))
+          fs-table (:NAME (:REFERENCES-CC sm))
+          fs-cols (:NAME (:NAMES (:REFERENCES-CC sm)))]
+      (println (str
+                 "table:    " table
+                 "\n\tns-table: " ns-table
+                 "\n\tns-cols:  " ns-cols
+                 "\n\tfs-table: " fs-table
+                 "\n\tfs-cols:  " fs-cols))
+      (cond
+        (not
+          (= table ns-table))
+        ;; this statement doesn't refer to us...
+        entity-map
+        true
+        (deep-merge
+          entity-map
+          {:content
+           {:properties
+            {(keyword ns-cols)
+             {:attrs
+              {:type "entity" :entity fs-table :farkey fs-cols}}}}})))))
+
+
+(defn decorate-with-primary-key
+  [entity-map statement]
+  (if
+    (is-primary-key-statement? statement)
+    (let [sm (subtree-to-map (is-primary-key-statement? statement))
+          table (:name entity-map)
+          st-table (:NAME (:QUAL-NAME (:ALTER-TABLE (subtree-to-map statement))))
+          col (keyword (:NAME (:NAMES (:INDEX-PARAMS sm))))
+          properties (:properties (:content entity-map))]
+      (if
+        (= table st-table)
+        (merge
+          entity-map
+          {:content
+           (merge
+             (:content entity-map)
+             {:key {col (properties col)}
+              :properties (dissoc properties col)})})
+        entity-map))
+    entity-map))
+
+
+(defn decorate-with-all
+  [entity-map statements function]
+  (reduce
+    deep-merge
+    entity-map
+    (remove
+      nil?
+      (map function statements))))
+
+
 (defn table-definitions-to-entities
   "Extract table definitions from these `statements` as a map of ADL
-   entities indexed by name."
-  ([statements]
-   (reduce table-definition-to-entity {} statements)))
-
-(defn extract-security-groups-from-statements
+  entities indexed by name."
   [statements]
-  nil)
+  (let
+    [base-map (reduce table-definition-to-map {} statements)]
+    (apply
+      merge
+      (map
+        (fn [x]
+          (let [entity-map (base-map x)]
+          {x
+           (decorate-with-all
+             (decorate-with-all entity-map statements #(decorate-with-relationship entity-map %))
+             statements
+             #(decorate-with-primary-key entity-map %))}))
+        (keys base-map)))))
 
 
 (defn to-adl
@@ -165,8 +312,7 @@
      {:tag :application
       :attrs {:name application-name
               :version version }
-      :content (vals entities)}
-     ))
+      :content (vals entities)}))
   ([input application-name version output]
    (let [adl (to-adl input application-name version)]
      (spit output (str xml-header "\n" (with-out-str (emit-element adl))))

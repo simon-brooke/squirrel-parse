@@ -28,6 +28,22 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
+(defn deep-merge [v & vs]
+  "Filched from https://gist.github.com/danielpcox/c70a8aa2c36766200a95"
+  (letfn [(rec-merge [v1 v2]
+                     (if (and (map? v1) (map? v2))
+                       (merge-with deep-merge v1 v2)
+                       v2))]
+    (when (some identity vs)
+      (reduce #(rec-merge %1 %2) v vs))))
+;;   (letfn [(rec-merge [v1 v2]
+;;             (if (and (map? v1) (map? v2))
+;;               (merge-with deep-merge v1 v2)
+;;               v2))]
+;;     (if (some identity vs)
+;;       (reduce #(rec-merge %1 %2) v vs)
+;;       v)))
+
 (defn- make-unterminated-case-insensitive-match-rule
   "Make a grammar rule which matches this `token` case-insensitively,
   without the terminal semi-colon. Keywords may always optionally be preceded

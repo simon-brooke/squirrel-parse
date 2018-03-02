@@ -36,10 +36,12 @@
   [x]
   (and
     (coll? x)(contains? #{:COMMENT
-                          :SPACE
+                          :LPAR
                           :OPT-KW-DATA
                           :OPT-SPACE
                           :QUOTE-MK
+                          :RPAR
+                          :SPACE
                           :TERMINATOR} (first x))))
 
 
@@ -88,6 +90,8 @@
         :ALTER-SEQ-ELEMENT
         :ALTER-STMT
         :ALTER-TABLE-ELEMENT
+        :CREATE-STMT
+        :EXPRESSION
         :MATCH-TYPE
         :ONLY
         :OPT-KW-SCHEMA
@@ -107,7 +111,8 @@
         :TABLE-SPEC-ELEMENT
         :TC-ELEMENT
         :VALUE) (simplify-second-of-two tree)
-      (:PERMISSION-COMMA) (in-simplify (nth tree 1))
+      (:PERMISSION-COMMA
+        :TABLE-SPEC-ELT-COMMA) (in-simplify (nth tree 1))
       (:ROLE) (first tree)
       (remove nil? (map in-simplify tree)))
     tree))
