@@ -1,7 +1,7 @@
 (ns squirrel-parse.core
   (:require [squirrel-parse.parser :refer [parse]]
             [squirrel-parse.simplify :refer [simplify]]
-            [squirrel-parse.to-adl :refer [to-adl]]))
+            [squirrel-parse.to-adl :refer [table-definitions-to-entities]]))
 
 ;;; This is get-you-started code.
 

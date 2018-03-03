@@ -224,15 +224,13 @@
           fs-cols (:NAME (:NAMES (:REFERENCES-CC sm)))]
       (if
         (= table ns-table)
-        (do
-          (println "...Firing!")
         (deep-merge
           entity-map
           {:content
            {:properties
              {(keyword ns-cols)
               {:attrs
-               {:type "entity" :entity fs-table :farkey fs-cols}}}}}))
+               {:type "entity" :entity fs-table :farkey fs-cols}}}}})
         ;; else this statement doesn't refer to us...
         ))))
 
@@ -259,6 +257,9 @@
 
 
 (defn decorate-with-all
+  "Apply this `function` to this `entity-map` and each of these statements
+  in sequence, and return a merge of the map with each of the statements
+  which actually returned a value."
   [entity-map statements function]
   (reduce
     deep-merge
@@ -279,7 +280,7 @@
       (map
         (fn [x]
           (let [entity-map (base-map x)]
-          {x
+          {(keyword x)
            (decorate-with-all
              (decorate-with-all entity-map statements #(decorate-with-relationship %1 %2))
              statements
