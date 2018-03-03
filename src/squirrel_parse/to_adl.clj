@@ -6,7 +6,7 @@
             [clj-time.format :refer [formatters unparse]]
             [squirrel-parse.parser :refer [parse]]
             [squirrel-parse.simplify :refer [simplify]]
-;;            [squirrel-parse.utils :refer [deep-merge]]
+            [squirrel-parse.utils :refer [deep-merge]]
             ))
 
 
@@ -288,6 +288,8 @@
 
 
 (defn to-adl-xml
+  "Turn `object`, a fragment of the mappy sort of structure created
+  by `table-definitions-to-entities`, into serialisable XML"
   [object]
   (cond
     (keyword? object)

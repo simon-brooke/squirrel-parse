@@ -8,3 +8,5 @@ target/classes/META-INF/maven/squirrel-parse/squirrel-parse/pom\.properties
 target/
 
 \.lein-failures
+
+*.dump
