@@ -376,8 +376,9 @@
 
 (defn migrations-to-xml
   "As above, but for all 'up' migrations in the migrations directory specified by
-  `migrations-path`. Writes XML to `output`, but returns, instead of the serialisable XML
-  structure, the intermediate mappy structure, because that is more tractable in Clojure."
+  `migrations-path`. Writes XML to `output` (if specified), but returns, instead
+  of the serialisable XML structure, the intermediate mappy structure, because
+  that is more tractable in Clojure."
   ([migrations-path application-name]
    (migrations-to-xml migrations-path application-name (unparse (formatters :basic-date) (now))))
   ([migrations-path application-name version]
