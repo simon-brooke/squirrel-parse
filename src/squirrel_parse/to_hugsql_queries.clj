@@ -35,13 +35,17 @@
         pretty-name (s/replace (s/replace entity-name #"_" "-") #"s$" "")
         all-property-names (map #(:name (:attrs %)) (vals (:properties (:content entity-map))))
         ]
-    (str "-- :name create-" pretty-name "! :! :n\n"
+    (str "-- :name create-" pretty-name "! :<!\n"
          "-- :doc creates a new " pretty-name " record\n"
-         "INSERT INTO " entity-name "\n("
-         (s/join ", " all-property-names)
+         "INSERT INTO " entity-name " ("
+         (s/join ",\n\t" all-property-names)
          ")\nVALUES ("
-         (s/join ", " (map keyword all-property-names))
-         ")\n\n")))
+         (s/join ",\n\t" (map keyword all-property-names))
+         ")"
+         (if
+           (has-primary-key? entity-map)
+           (str "\nreturning " (s/join ",\n\t" (key-names entity-map))))
+         "\n\n")))
 
 
 (defn update-query [entity-map]
@@ -71,7 +75,7 @@
     (has-primary-key? entity-map)
     (let [entity-name (:name (:attrs entity-map))
           pretty-name (s/replace (s/replace entity-name #"_" "-") #"s$" "")]
-      (str "-- :name get-" pretty-name "! :! :n\n"
+      (str "-- :name get-" pretty-name " :? :1\n"
            "-- :doc updates an existing " pretty-name " record\n"
            "SELECT * FROM " entity-name "\n"
            (where-clause entity-map)
