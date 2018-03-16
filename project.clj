@@ -1,4 +1,4 @@
-(defproject squirrel-parse "0.1.0-SNAPSHOT"
+(defproject squirrel-parse "0.1.1"
   :description "A library for parsing SQL"
   ;; :url "http://example.com/FIXME"
   :license {:name "GNU General Public License,version 2.0 or (at your option) any later version"
