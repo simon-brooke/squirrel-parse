@@ -2,12 +2,13 @@
       :author "Simon Brooke"}
   squirrel-parse.to-adl
   (:require [clojure.java.io :refer [file]]
+            [clojure.string :as s]
             [clojure.xml :refer [emit-element]]
             [clj-time.core :refer [now]]
             [clj-time.format :refer [formatters unparse]]
             [squirrel-parse.parser :refer [parse]]
             [squirrel-parse.simplify :refer [simplify]]
-            [squirrel-parse.utils :refer [deep-merge]]
+            [squirrel-parse.utils :refer :all]
             ))
 
 
@@ -51,6 +52,7 @@
    :DT-DATE              "date"
    :DT-DOUBLE-PRECISION  "real"
    :DT-FLOAT             "real"
+   :DT-INT               "integer"
    :DT-INTEGER           "integer"
    :DT-MONEY             "money"
    :DT-NUMERIC           "real"
@@ -66,62 +68,6 @@
    :DT-INTERVAL          "unsupported"
    })
 
-(defn is-subtree-of-type?
-  "Is this `subtree` a parser subtree of the specified `type`, expected to be a keyword?"
-  [subtree type]
-  (and (coll? subtree) (= (first subtree) type)))
-
-
-(defn subtree?
-  "Does this `subtree` appear to be a subtree of a parse tree?"
-  [subtree]
-  (and (seq? subtree) (keyword? (first subtree))))
-
-
-(defn subtree-to-map
-  "Converts `subtree` to a map. **Note** that this will return unexpected
-  results if the subtree contains repeating entries of the same type
-  (i.e. having the same initial keyword), as only the last of such
-  a sequence will be retained. Use with care."
-  [subtree]
-  (if
-    (subtree? subtree)
-    (if
-      (and
-        (> (count subtree) 1)
-        (reduce #(and %1 %2) (map seq? (rest subtree))))
-      {(first subtree) (reduce merge {} (map subtree-to-map (rest subtree)))}
-      {(first subtree) (first (rest subtree))})
-    subtree))
-
-
-(defn is-create-table-statement?
-  "Is this statement a create table statement?"
-  [statement]
-  (is-subtree-of-type? statement :CREATE-TABLE-STMT))
-
-(defn get-children-of-type [subtree type]
-  (if
-    (coll? subtree)
-      (remove
-        nil?
-        (map
-          #(if
-             (and (coll? %) (= (first %) type))
-             %)
-          subtree))))
-
-
-(defn get-first-child-of-type [subtree type]
-  (first (get-children-of-type subtree type)))
-
-
-(defn get-name
-  "Return the value the first top-level :NAME element of this `subtree`."
-  [subtree]
-  (let [name-elt (get-first-child-of-type subtree :NAME)]
-    (if name-elt (second name-elt))))
-
 
 (defn get-column-datatype
   "Get the datatype of this column specification."
@@ -132,7 +78,9 @@
 
 
 (defn make-property
-  "Make an ADL property representing this column specification."
+  "Make an ADL property representing this column specification.
+  TODO: many things, but does not cope with multi-column foreign keys.
+  TODO: default value is not extracted correctly."
   [column-spec]
   (if
     (is-subtree-of-type? (second column-spec) :COLUMN-SPEC)
@@ -140,10 +88,11 @@
     (let [name (get-name column-spec)
           size-spec (get-first-child-of-type column-spec :INT-VAL)
           size (if size-spec (nth size-spec 1))
-          constraints (get-first-child-of-type column-spec :COLUMN-CONSTRAINTS)
-          required? (get-first-child-of-type constraints :NOT-NULL-CC)
-          default? (get-first-child-of-type constraints :DEFAULT-CC)
-          dflt-val (if default? (nth default? 2))]
+          constraints (rest (get-first-child-of-type column-spec :COLUMN-CONSTRAINTS))
+          required? (first (filter #(get-first-child-of-type % :NOT-NULL-CC) constraints))
+          default? (first (filter #(get-first-child-of-type % :DEFAULT-CC) constraints))
+          foreign? (first (filter #(get-first-child-of-type % :REFERENCES-CC) constraints))
+          dflt-val (if (and default? (> (count default?) 2)) (nth (nth default? 1) 2))]
       {(keyword name)
        {:tag :property
         :attrs
@@ -151,9 +100,15 @@
           (if size {:size size} {})
           (if required? {:required "true"} {})
           (if default? {:default dflt-val})
+          (if
+            foreign?
+            (let [subtree-map (subtree-to-map foreign?)]
+              {:type "entity"
+               :entity (-> subtree-map :COLUMN-CONSTRAINT :REFERENCES-CC :NAME)
+               :farkey (-> subtree-map :COLUMN-CONSTRAINT :REFERENCES-CC :NAMES :NAME)})
+            {:type (get-column-datatype column-spec)})
           {:name name
-           :column name
-           :type (get-column-datatype column-spec)})
+           :column name})
         :content
         {:prompts
          {:en-GB
@@ -194,41 +149,6 @@
     (let [table-name (get-name statement)]
       (merge entities-map {table-name (make-entity-map statement)}))
     entities-map))
-
-
-(defn is-column-constraint-statement-of-type?
-  "Returns non-nil (actually the relevant fragment) if `statement` is an
-  'alter table... add column constraint' statement with the specified `key`"
-  [statement key]
-  (and
-    (is-subtree-of-type? statement :ALTER-TABLE)
-    (let [sm (subtree-to-map statement)]
-      (or
-        (key
-          (:COLUMN-CONSTRAINT
-            (:ADD-CONSTRAINT
-              (:ALTER-TABLE-ELEMENTS
-                (:ALTER-TABLE sm)))))
-        (key
-          (:COLUMN-CONSTRAINT
-            (:COLUMN-CONSTRAINT
-              (:ADD-CONSTRAINT
-                (:ALTER-TABLE-ELEMENTS
-                  (:ALTER-TABLE sm))))))))))
-
-
-(defn is-foreign-key-statement?
-  "Returns non-nil (actually the relevant fragment) if `statement` is an
-  'alter table... add foreign key' statement"
-  [statement]
-  (is-column-constraint-statement-of-type? statement :REFERENCES-CC))
-
-
-(defn is-primary-key-statement?
-  "Returns non-nil (actually the relevant fragment) if `statement` is an
-  'alter table... add primary key' statement"
-  [statement]
-  (is-column-constraint-statement-of-type? statement :PRIMARY-CC))
 
 
 (defn decorate-with-relationship
@@ -300,6 +220,14 @@
     (remove
       nil?
       (map #(apply function (list entity-map %)) statements))))
+
+
+;; (defn fixup-many-to-many
+
+;;   [entities-map]
+;;   (let [entities (filter #(not (is-link-table? %)) (vals entities-map))
+;;         link-tables (filter is-link-table? (vals entities-map))]
+;;     (reduce #() entities-map)))
 
 
 (defn table-definitions-to-entities
