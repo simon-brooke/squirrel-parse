@@ -10,7 +10,13 @@ structures, for automatic generation of things like
 This is not production ready code as yet. Nevertheless if you want a
 sensible entry point, look at the two example functions in `squirrel-parse.core`.
 
+If you want to do something actually a bit useful, try the function
 
+`squirrel-parse.to-hugsql-queries/migrations-to-queries-sql`
+
+This, given a [Migratus](https://github.com/yogthos/migratus) migrations directory will generate a
+[HugSQL](https://www.hugsql.org/) `queries.sql` file which, while it's not
+perfect, gets you a very long way.
 
 ## Status
 
