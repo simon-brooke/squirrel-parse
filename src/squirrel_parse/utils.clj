@@ -1,7 +1,7 @@
 (ns ^{:doc "A parser for SQL: utility functions."
       :author "Simon Brooke"}
   squirrel-parse.utils
-  (:require [clojure.string :refer [join split trim triml upper-case]]))
+  (:require [clojure.string :as s]))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -45,14 +45,14 @@
   without the terminal semi-colon. Keywords may always optionally be preceded
   by whitespace and are usually succeeded by whitespace."
   [token]
-  (let [subtokens (split token #"\s+")
-        name (join "-" subtokens)]
+  (let [subtokens (s/split token #"\s+")
+        name (s/join "-" subtokens)]
     (apply str
            (flatten
              (list
-               (upper-case name)
+               (s/upper-case name)
                " := OPT-SPACE "
-               (join " SPACE " (map #(str "#'(?i)" % "'") subtokens))
+               (s/join " SPACE " (map #(str "#'(?i)" % "'") subtokens))
                " OPT-SPACE ")))))
 
 
@@ -79,7 +79,7 @@
 
 (defn- make-timezone-clause
   [match with-tz? with-precision?]
-  (join
+  (s/join
     " "
     (list
       (if with-precision? (str match " LPAR INT-VAL RPAR") match)
@@ -92,16 +92,16 @@
   "Make a rule which matches this `datatype`, for datatypes which may optionally take
   'with (or without) time zone'."
   [token]
-  (let [subtokens (split token #"\s+")
-        name (join "-" subtokens)
-        match (join " SPACE " (map #(str "#'(?i)" % "'") subtokens))]
+  (let [subtokens (s/split token #"\s+")
+        name (s/join "-" subtokens)
+        match (s/join " SPACE " (map #(str "#'(?i)" % "'") subtokens))]
     (apply str
            (flatten
              (list
                "DT-"
-               (upper-case name)
+               (s/upper-case name)
                " := "
-               (join
+               (s/join
                  " | "
                  (list
                    match
@@ -212,4 +212,6 @@
     (if name-elt (second name-elt))))
 
 
+(defn singularise [string]
+  (s/replace (s/replace string #"_" "-") #"s$" ""))
 

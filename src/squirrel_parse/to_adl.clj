@@ -222,12 +222,13 @@
       (map #(apply function (list entity-map %)) statements))))
 
 
+;; TODO: link tables are not entities, and should be removed from the entities map.
 ;; (defn fixup-many-to-many
 
 ;;   [entities-map]
 ;;   (let [entities (filter #(not (is-link-table? %)) (vals entities-map))
 ;;         link-tables (filter is-link-table? (vals entities-map))]
-;;     (reduce #() entities-map)))
+;;     (reduce #() entities-map link-tables)))
 
 
 (defn table-definitions-to-entities
