@@ -1,12 +1,14 @@
 (ns ^{:doc "A parser for SQL: generate Application Description Language."
       :author "Simon Brooke"}
   squirrel-parse.to-adl
-  (:require [clojure.xml :refer [emit-element]]
+  (:require [clojure.java.io :refer [file]]
+            [clojure.string :as s]
+            [clojure.xml :refer [emit-element]]
             [clj-time.core :refer [now]]
             [clj-time.format :refer [formatters unparse]]
             [squirrel-parse.parser :refer [parse]]
             [squirrel-parse.simplify :refer [simplify]]
-            [squirrel-parse.utils :refer [deep-merge]]
+            [squirrel-parse.utils :refer :all]
             ))
 
 
@@ -42,84 +44,29 @@
 
 (def sql-datatype-to-adl-datatype
   "Map to convert SQL datatypes to the nearest ADL equivalent."
-  {:DT-BIGINT            :integer
-   :DT-BIGSERIAL         :integer
-   :DT-BIT               :integer
-   :DT-BOOLEAN           :boolean
-   :DT-BYTEA             :unsupported
-   :DT-DATE              :date
-   :DT-DOUBLE-PRECISION  :real
-   :DT-FLOAT             :real
-   :DT-INTEGER           :integer
-   :DT-MONEY             :money
-   :DT-NUMERIC           :real
-   :DT-REAL              :real
-   :DT-SERIAL            :integer
-   :DT-TEXT              :text
-   :DT-CHAR              :string
-   :DT-CHARACTER         :string
-   :DT-CHARACTER-VARYING :string
-   :DT-VARCHAR           :string
-   :DT-TIME              :string
-   :DT-TIMESTAMP         :timestamp
-   :DT-INTERVAL          :unsupported
+  {:DT-BIGINT            "integer"
+   :DT-BIGSERIAL         "integer"
+   :DT-BIT               "integer"
+   :DT-BOOLEAN           "boolean"
+   :DT-BYTEA             "unsupported"
+   :DT-DATE              "date"
+   :DT-DOUBLE-PRECISION  "real"
+   :DT-FLOAT             "real"
+   :DT-INT               "integer"
+   :DT-INTEGER           "integer"
+   :DT-MONEY             "money"
+   :DT-NUMERIC           "real"
+   :DT-REAL              "real"
+   :DT-SERIAL            "integer"
+   :DT-TEXT              "text"
+   :DT-CHAR              "string"
+   :DT-CHARACTER         "string"
+   :DT-CHARACTER-VARYING "string"
+   :DT-VARCHAR           "string"
+   :DT-TIME              "string"
+   :DT-TIMESTAMP         "timestamp"
+   :DT-INTERVAL          "unsupported"
    })
-
-(defn is-subtree-of-type?
-  "Is this `subtree` a parser subtree of the specified `type`, expected to be a keyword?"
-  [subtree type]
-  (and (coll? subtree) (= (first subtree) type)))
-
-
-(defn subtree?
-  "Does this `subtree` appear to be a subtree of a parse tree?"
-  [subtree]
-  (and (seq? subtree) (keyword? (first subtree))))
-
-
-(defn subtree-to-map
-  "Converts `subtree` to a map. **Note** that this will return unexpected
-  results if the subtree contains repeating entries of the same type
-  (i.e. having the same initial keyword), as only the last of such
-  a sequence will be retained. Use with care."
-  [subtree]
-  (if
-    (subtree? subtree)
-    (if
-      (and
-        (> (count subtree) 1)
-        (reduce #(and %1 %2) (map seq? (rest subtree))))
-      {(first subtree) (reduce merge {} (map subtree-to-map (rest subtree)))}
-      {(first subtree) (first (rest subtree))})
-    subtree))
-
-
-(defn is-create-table-statement?
-  "Is this statement a create table statement?"
-  [statement]
-  (is-subtree-of-type? statement :CREATE-TABLE-STMT))
-
-(defn get-children-of-type [subtree type]
-  (if
-    (coll? subtree)
-      (remove
-        nil?
-        (map
-          #(if
-             (and (coll? %) (= (first %) type))
-             %)
-          subtree))))
-
-
-(defn get-first-child-of-type [subtree type]
-  (first (get-children-of-type subtree type)))
-
-
-(defn get-name
-  "Return the value the first top-level :NAME element of this `subtree`."
-  [subtree]
-  (let [name-elt (get-first-child-of-type subtree :NAME)]
-    (if name-elt (second name-elt))))
 
 
 (defn get-column-datatype
@@ -131,17 +78,44 @@
 
 
 (defn make-property
-  "Make an ADL property representing this column specification."
+  "Make an ADL property representing this column specification.
+  TODO: many things, but does not cope with multi-column foreign keys.
+  TODO: default value is not extracted correctly."
   [column-spec]
   (if
     (is-subtree-of-type? (second column-spec) :COLUMN-SPEC)
     (make-property (second column-spec))
-    (let [name (get-name column-spec)]
+    (let [name (get-name column-spec)
+          size-spec (get-first-child-of-type column-spec :INT-VAL)
+          size (if size-spec (nth size-spec 1))
+          constraints (rest (get-first-child-of-type column-spec :COLUMN-CONSTRAINTS))
+          required? (first (filter #(get-first-child-of-type % :NOT-NULL-CC) constraints))
+          default? (first (filter #(get-first-child-of-type % :DEFAULT-CC) constraints))
+          foreign? (first (filter #(get-first-child-of-type % :REFERENCES-CC) constraints))
+          dflt-val (if (and default? (> (count default?) 2)) (nth (nth default? 1) 2))]
       {(keyword name)
        {:tag :property
         :attrs
-        {:name (get-name column-spec)
-         :type (get-column-datatype column-spec)}}})))
+        (merge
+          (if size {:size size} {})
+          (if required? {:required "true"} {})
+          (if default? {:default dflt-val})
+          (if
+            foreign?
+            (let [subtree-map (subtree-to-map foreign?)]
+              {:type "entity"
+               :entity (-> subtree-map :COLUMN-CONSTRAINT :REFERENCES-CC :NAME)
+               :farkey (-> subtree-map :COLUMN-CONSTRAINT :REFERENCES-CC :NAMES :NAME)})
+            {:type (get-column-datatype column-spec)})
+          {:name name
+           :column name})
+        :content
+        {:prompts
+         {:en-GB
+          {:tag :prompt
+           :attrs
+           {:prompt name
+            :local "en-GB"}}}}}})))
 
 
 (defn make-entity-map [table-decl]
@@ -150,7 +124,8 @@
    :attrs
    {:name (get-name table-decl)}
    :content
-   {:properties
+   {:key {:content {}}
+    :properties
      (apply
        merge
        (map
@@ -174,40 +149,6 @@
     (let [table-name (get-name statement)]
       (merge entities-map {table-name (make-entity-map statement)}))
     entities-map))
-
-
-(defn is-column-constraint-statement-of-type?
-  [statement key]
-  (and
-    (is-subtree-of-type? statement :ALTER-TABLE)
-    (let [sm (subtree-to-map statement)]
-      (or
-        (key
-          (:COLUMN-CONSTRAINT
-            (:ADD-CONSTRAINT
-              (:ALTER-TABLE-ELEMENTS
-                (:ALTER-TABLE sm)))))
-        (key
-          (:COLUMN-CONSTRAINT
-            (:COLUMN-CONSTRAINT
-              (:ADD-CONSTRAINT
-                (:ALTER-TABLE-ELEMENTS
-                  (:ALTER-TABLE sm))))))
-        ))))
-
-
-(defn is-foreign-key-statement?
-  "Returns non-nil (actually the relevant fragment) if `statement` is an
-  'alter table... add foreign key' statement"
-  [statement]
-  (is-column-constraint-statement-of-type? statement :REFERENCES-CC))
-
-
-(defn is-primary-key-statement?
-  "Returns non-nil (actually the relevant fragment) if `statement` is an
-  'alter table... add primary key' statement"
-  [statement]
-  (is-column-constraint-statement-of-type? statement :PRIMARY-CC))
 
 
 (defn decorate-with-relationship
@@ -237,24 +178,36 @@
 
 (defn decorate-with-primary-key
   "If this `statement` is a primary key statement, return an entity-map like this `entity-map`
-  but with the relevant property removed from the 'content' sub-element and added to the 'key'
-  sub-element."
+  but with the relevant property moved into 'keys'."
   [entity-map statement]
   (if
     (is-primary-key-statement? statement)
     (let [sm (subtree-to-map (is-primary-key-statement? statement))
-          table (:name (:attrs entity-map))
+          em-table (:name (:attrs entity-map))
           st-table (:NAME (:QUAL-NAME (:ALTER-TABLE (subtree-to-map statement))))
           col (keyword (:NAME (:NAMES (:INDEX-PARAMS sm))))
-          properties (:properties (:content entity-map))]
+          properties (:properties (:content entity-map))
+          property (col properties)
+          remaining-properties (dissoc properties col)
+          pk (merge
+               (:content (:key (:content entity-map)))
+               {:content
+                {col
+                 (merge
+                   property
+                   {:attrs
+                    (merge (:attrs property)
+                           {:distinct "system" :immutable "true" :required "true"})})}})]
       (if
-        (= table st-table)
-        (deep-merge
+        (= em-table st-table)
+        (merge
           entity-map
           {:content
-           {:properties
-            {col {:tag :key}}}})))))
+           {:key pk
+            :properties remaining-properties }})))))
 
+
+;; (merge electors {:content (merge (:content electors) {:properties (dissoc (:properties (:content electors)) :id :email)})})
 
 (defn decorate-with-all
   "Apply this `function` to this `entity-map` and each of these statements
@@ -267,6 +220,15 @@
     (remove
       nil?
       (map #(apply function (list entity-map %)) statements))))
+
+
+;; TODO: link tables are not entities, and should be removed from the entities map.
+;; (defn fixup-many-to-many
+
+;;   [entities-map]
+;;   (let [entities (filter #(not (is-link-table? %)) (vals entities-map))
+;;         link-tables (filter is-link-table? (vals entities-map))]
+;;     (reduce #() entities-map link-tables)))
 
 
 (defn table-definitions-to-entities
@@ -307,6 +269,17 @@
          (map
            to-adl-xml
            (vals (:properties (:content object))))})
+      (:property :key)
+      (merge
+        object
+        {:content
+          (map
+            to-adl-xml
+            (apply
+              concat
+              (map
+                #(vals (% (:content object)))
+                '(:permissions :options :prompts :helps :ifmissings))))})
       (apply assoc (cons {} (interleave (keys object) (map to-adl-xml (vals object))))))
     true
     object))
@@ -329,3 +302,37 @@
    (let [adl (to-adl input application-name version)]
      (spit output (str xml-header "\n" (with-out-str (emit-element adl))))
      adl)))
+
+(defn migrations-to-xml
+  "As above, but for all 'up' migrations in the migrations directory specified by
+  `migrations-path`. Writes XML to `output` (if specified), but returns, instead
+  of the serialisable XML structure, the intermediate mappy structure, because
+  that is more tractable in Clojure."
+  ([migrations-path application-name]
+   (migrations-to-xml migrations-path application-name (unparse (formatters :basic-date) (now))))
+  ([migrations-path application-name version]
+   (migrations-to-xml migrations-path application-name version nil))
+  ([migrations-path application-name version output]
+   (let
+     [filenames
+      (filter
+        #(re-matches #".*\.up\.sql" %)
+        (map
+          #(.getAbsolutePath %)
+          (filter
+            #(.isFile %)
+            (file-seq (file migrations-path)))))
+      statements (simplify
+                   (apply concat (map #(parse (slurp %)) filenames)))
+      entities
+      (table-definitions-to-entities
+        statements)
+      adl {:tag :application
+           :attrs {:name application-name
+                   :version version }
+           :content (to-adl-xml (vals entities))}]
+     (if
+       output
+       (spit output (str xml-header "\n" (with-out-str (emit-element adl)))))
+     entities)))
+
