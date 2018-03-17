@@ -145,7 +145,7 @@
                  "."))
             :select-many
           (generate-handler-src
-            handler-name query :post
+            handler-name query :get
             (str "select all records from the "
                  (-> query :entity :attrs :name)
                  " table. If the keys (:limit :offset) are present in the request then they will be used to page through the data. Returns a sequence of maps each containing the following keys: "
@@ -177,11 +177,11 @@
       (map
         #(let [handler (handlers-map %)]
            (list
-             (s/upper-case (name (:method handler)))
+             (symbol (s/upper-case (name (:method handler))))
              (str "/json/auto/" (:name handler))
              'request
-             (list
-               'route/restricted
+              (list
+                'route/restricted
                (list (:name handler) 'request))))
         (sort
           (keys handlers-map))))))

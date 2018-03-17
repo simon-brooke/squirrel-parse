@@ -250,7 +250,7 @@
          :entity entity-map
          :type :delete-1
          :query
-         (str "-- :name " query-name ":! " signature "\n"
+         (str "-- :name " query-name " " signature "\n"
               "-- :doc updates an existing " pretty-name " record\n"
               "DELETE FROM " entity-name "\n"
               (where-clause entity-map)
