@@ -213,5 +213,5 @@
 
 
 (defn singularise [string]
-  (s/replace (s/replace string #"_" "-") #"s$" ""))
+  (s/replace (s/replace (s/replace string #"_" "-") #"s$" "") #"ie$" "y"))
 
