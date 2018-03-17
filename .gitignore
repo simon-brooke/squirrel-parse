@@ -10,3 +10,7 @@ target/
 \.lein-failures
 
 *.dump
+
+queries\.auto\.sql
+
+auto_json_routes\.clj
