@@ -32,6 +32,8 @@
 
 ;;; this is a fairly straight translation of the ADL 1.4 DTD into Clojure
 
+(declare fieldgroup-validations)
+
 (def permissions
   "permissions a group may have on an entity, list, page, form or field
 	permissions are deemed to increase as you go right. A group cannot
@@ -78,20 +80,41 @@
 	uploadable but points to an uploadable graphical image file."
   #{"string", "integer", "real", "money", "date", "time", "timestamp", "uploadable"})
 
-(def simple-data-types (union
-                        defineable-data-types
-                        #{"boolean" "text"}))
+(def simple-data-types
+  "data types which are fairly straightforward translations of JDBC data types
+  * `boolean`:		boolean 	java.sql.Types.BIT or char(1)		  java.sql.Types.CHAR
+  * `text`:			  text or		  java.sql.Types.LONGVARCHAR
+  memo		    java.sql.Types.CLOB"
+  (union
+    defineable-data-types
+    #{"boolean" "text"}))
 
-(def complex-data-types #{"entity", "link", "list", "defined"})
+(def complex-data-types
+  "data types which are more complex than SimpleDataTypes...
+	* `entity` : 		a foreign key link to another entity (i.e. the 'many' end of a
+					    one-to-many link);
+	* `list` :			a list of some other entity that links to me (i.e. the 'one' end of
+					    a one-to-many link);
+	* `link` : 			a many to many link (via a link table);
+	* `defined` : 	a type defined by a typedef."
+  #{"entity", "link", "list", "defined"})
 
-(def special-data-types #{"geopos", "image", "message"})
+(def special-data-types
+  "data types which require special handling - which don't simply map onto
+  common SQL data types
+  * `geopos` :    a latitude/longitude pair (experimental and not yet implemented)
+  * `image` :     a raster image file, in jpeg, gif, or png format (experimental, not yet implemented)
+  * `message` :   an internationalised message, having different translations for different locales"
+  #{"geopos", "image", "message"})
 
 (def all-data-types (union
                      simple-data-types
                      complex-data-types
                      special-data-types))
 
-(def content #{"head", "top", "foot"})
+(def content
+  "content, for things like pages (i.e. forms, lists, pages)"
+  #{"head", "top", "foot"})
 
 (def field-stuff #{"field", "fieldgroup", "auxlist", "verb"})
 
@@ -189,8 +212,8 @@
   {:tag [v/required [#(= % :option)]]
    [:attrs :value] [v/required]
    :content [[v/every #(or
-                        (b/validate % documentation-validations)
-                        (b/validate % prompt-validations))]]})
+                        (b/valid? % documentation-validations)
+                        (b/valid? % prompt-validations))]]})
 
 (def pragma-validations
   "pragmatic advice to generators of lists and forms, in the form of
@@ -219,8 +242,8 @@
    [:attrs :action] [v/string v/required [v/member generator-actions]]
    [:attrs :class] v/string
    :content [[v/every #(or
-                        (b/validate % documentation-validations)
-                        (b/validate % param-validations))]]})
+                        (b/valid? % documentation-validations)
+                        (b/valid? % param-validations))]]})
 
 
 (def in-implementation-validations
@@ -257,20 +280,23 @@
   {:tag [v/required [#(= % :typedef)]]
    [:attrs :name] [v/required v/string]
    [:attrs :type] [[v/member defineable-data-types]]
-   [:attrs :size] [[#(or
-                      (integer? %)
-                      (integer? (read-string %)))]]
+   [:attrs :size] [[#(if
+                       (string? %)
+                       (integer? (read-string %))
+                       (integer? %))]]
    [:attrs :pattern] v/string
-   [:attrs :minimum] [[#(or
-                      (integer? %)
-                      (integer? (read-string %)))]]
-   [:attrs :maximum] [[#(or
-                      (integer? %)
-                      (integer? (read-string %)))]]
+   [:attrs :minimum] [[#(if
+                          (string? %)
+                          (integer? (read-string %))
+                          (integer? %))]]
+   [:attrs :maximum] [[#(if
+                          (string? %)
+                          (integer? (read-string %))
+                          (integer? %))]]
    :content [[v/every #(or
-                        (b/validate % documentation-validations)
-                        (b/validate % in-implementation-validations)
-                        (b/validate % help-validations))]]})
+                         (b/valid? % documentation-validations)
+                         (b/valid? % in-implementation-validations)
+                         (b/valid? % help-validations))]]})
 
 (def group-validations
   "a group of people with similar permissions to one another
@@ -321,43 +347,184 @@
               committed to persistent store, the value which it holds before
               it has been committed"
   {:tag [v/required [#(= % :property)]]
-  [:attrs :name] [v/required v/string]
+   [:attrs :name] [v/required v/string]
    [:attrs :type] [v/required [v/member all-data-types]]
-   ;; [:attrs :default] []
+   ;; [:attrs :default] [] ;; it's allowed, but I don't have anything particular to say about it
    [:attrs :typedef] v/string
    [:attrs :distinct] [v/string [v/member #{"none", "all", "user", "system"}]]
    [:attrs :entity] v/string
    [:attrs :farkey] v/string
    [:attrs :required] v/boolean
    [:attrs :immutable] v/boolean
-   [:attrs :size] [[#(or (integer? %)(integer? (read-string %)))]]
+   [:attrs :size] [[#(if
+                       (string? %)
+                       (integer? (read-string %))
+                       (integer? %))]]
    [:attrs :column] v/string
    [:attrs :concrete] v/boolean
    [:attrs :cascade] [[v/member cascade-actions]]
    :content [[v/every #(or
-                        (b/validate % documentation-validations)
-                        (b/validate % generator-validations)
-                        (b/validate % permission-validations)
-                        (b/validate % option-validations)
-                        (b/validate % prompt-validations)
-                        (b/validate % help-validations)
-                        (b/validate % ifmissing-validations))]]})
+                        (b/valid? % documentation-validations)
+                        (b/valid? % generator-validations)
+                        (b/valid? % permission-validations)
+                        (b/valid? % option-validations)
+                        (b/valid? % prompt-validations)
+                        (b/valid? % help-validations)
+                        (b/valid? % ifmissing-validations))]]})
 
 
 (def permission-validations
-  {:tag [v/required [#(= % :permission)]]})
+  "permissions policy on an entity, a page, form, list or field
+
+  * `group`: 			the group to which permission is granted
+  * `permission`:		the permission which is granted to that group"
+  {:tag [v/required [#(= % :permission)]]
+   [:attrs :group] [v/required v/string] ;; and it also needs to be the name of a pre-declared group
+   [:attrs :permission] [[v/member permissions]]
+   :content [[v/every documentation-validations]]})
+
+(def head-validations
+  "content to place in the head of the generated document; normally HTML."
+  {:tag [v/required [#(= % :head)]]})
+
+(def top-validations
+  "content to place in the top of the body of the generated document;
+	this is any HTML block or inline level element."
+  {:tag [v/required [#(= % :top)]]})
+
+(def foot-validations
+  "content to place in the bottom of the body of the generated document;
+	this is any HTML block or inline level element."
+  {:tag [v/required [#(= % :foot)]]})
+
+(def field-validations
+  "a field in a form or page
+
+  * `property`:   the property which this field displays/edits."
+  {:tag [v/required [#(= % :field)]]
+   [:attrs :property] [v/string v/required] ;; and it must also be the name of a property in the current entity
+   :content [[v/every #(or
+                         (b/valid? % documentation-validations)
+                         (b/valid? % prompt-validations)
+                         (b/valid? % permission-validations)
+                         (b/valid? % help-validations))]]})
+
+(def verb-validations
+  "a verb is something that may be done through a form. Probably the verbs 'store'
+  and 'delete' are implied, but maybe they need to be explicitly declared. The 'verb'
+  attribute of the verb is what gets returned to the controller
+
+  * `verb`  what gets returned to the controller when this verb is selected
+  * `dangerous`  true if this verb causes a destructive change."
+  {:tag [v/required [#(= % :verb)]]
+   [:attrs :verb] [v/string v/required]
+   [:attrs :dangerous] [v/boolean v/required]})
+
+(def order-validations
+  "an ordering or records in a list
+	* `property`:	the property on which to order
+	* `sequence`:	the sequence in which to order"
+  {:tag [v/required [#(= % :order)]]
+   [:attrs :property] [v/string v/required] ;; and it must also be the name of a property in the current entity
+   [:attrs :sequence] [[v/member sequences]]
+   :content [[v/every documentation-validations]]})
+
+(def auxlist-validations
+  "a subsidiary list, on which entities related to primary
+  entities in the enclosing page or list are listed
+
+  * `property`:   the property of the enclosing entity that this
+              list displays (obviously, must be of type='list')
+  * `onselect`:   the form or page of the listed entity to call
+              when an item from the list is selected
+  * `canadd`:     true if the user should be able to add records
+              to this list"
+  {:tag [v/required [#(= % :auxlist)]]
+   [:attrs :property] [v/string v/required] ;; and it must also be the name of a property of type `list` in the current entity
+   [:attrs :onselect] v/string
+   [:attrs :canadd] v/boolean
+   :content [[v/every #(or
+                         (b/valid? % documentation-validations)
+                         (b/valid? % prompt-validations)
+                         (b/valid? % field-validations)
+                         (b/valid? % fieldgroup-validations)
+                         (b/valid? % auxlist-validations)
+                         (b/valid? % verb-validations))]]})
+
+(def fieldgroup-validations
+  "a group of fields and other controls within a form or list, which the
+  renderer might render as a single pane in a tabbed display, for example."
+  {:tag [v/required [#(= % :fieldgroup)]]
+   [:attrs :name] [v/string v/required]
+   :content [[v/every #(or
+                         (b/valid? % documentation-validations)
+                         (b/valid? % prompt-validations)
+                         (b/valid? % permission-validations)
+                         (b/valid? % help-validations)
+                         (b/valid? % field-validations)
+                         (b/valid? % fieldgroup-validations)
+                         (b/valid? % auxlist-validations)
+                         (b/valid? % verb-validations))]]})
+
 
 (def form-validations
-  {:tag [v/required [#(= % :form)]]})
+  "a form through which an entity may be added or edited"
+  {:tag [v/required [#(= % :form)]]
+   [:attrs :name] [v/required v/string]
+   [:attrs :properties] [v/required [v/member #{"all", "user-distinct", "listed"}]]
+   [:attrs :canadd] v/boolean
+   :content [[v/every #(or
+                         (b/valid? % documentation-validations)
+                         (b/valid? % head-validations)
+                         (b/valid? % top-validations)
+                         (b/valid? % foot-validations)
+                         (b/valid? % field-validations)
+                         (b/valid? % fieldgroup-validations)
+                         (b/valid? % auxlist-validations)
+                         (b/valid? % verb-validations)
+                         (b/valid? % permission-validations)
+                         (b/valid? % pragma-validations))]]})
 
 (def page-validations
-  {:tag [v/required [#(= % :page)]]})
+  "a page on which an entity may be displayed"
+  {:tag [v/required [#(= % :page)]]
+   [:attrs :name] [v/required v/string]
+   [:attrs :properties] [v/required [v/member #{"all", "user-distinct", "listed"}]]
+   :content [[v/every #(or
+                         (b/valid? % documentation-validations)
+                         (b/valid? % head-validations)
+                         (b/valid? % top-validations)
+                         (b/valid? % foot-validations)
+                         (b/valid? % field-validations)
+                         (b/valid? % fieldgroup-validations)
+                         (b/valid? % auxlist-validations)
+                         (b/valid? % verb-validations)
+                         (b/valid? % permission-validations)
+                         (b/valid? % pragma-validations)
+                         )]]})
 
 (def list-validations
-  {:tag [v/required [#(= % :list)]]})
+  "a list on which entities of a given type are listed
 
-;; (def prompt-validations
-;;   {:tag [v/required [#(= % :prompt)]]})
+	* `onselect`:		name of form/page/list to go to when
+					    a selection is made from the list"
+  {:tag [v/required [#(= % :list)]]
+   [:attrs :name] [v/required v/string]
+   [:attrs :properties] [v/required [v/member #{"all", "user-distinct", "listed"}]]
+   [:attrs :onselect] v/string
+   :content [[v/every #(or
+                         (b/valid? % documentation-validations)
+                         (b/valid? % head-validations)
+                         (b/valid? % top-validations)
+                         (b/valid? % foot-validations)
+                         (b/valid? % field-validations)
+                         (b/valid? % fieldgroup-validations)
+                         (b/valid? % auxlist-validations)
+                         (b/valid? % verb-validations)
+                         (b/valid? % permission-validations)
+                         (b/valid? % pragma-validations)
+                         (b/valid? % order-validations)
+                         )]]})
 
 (def key-validations
   {:tag [v/required [#(= % :key)]]
@@ -385,15 +552,15 @@
    [:attrs :table] v/string
    [:attrs :foreign] v/boolean
    :content [[v/every #(or
-                        (b/validate % documentation-validations)
-                        (b/validate % prompt-validations)
-                        (b/validate % content-validations)
-                        (b/validate % key-validations)
-                        (b/validate % property-validations)
-                        (b/validate % permission-validations)
-                        (b/validate % form-validations)
-                        (b/validate % page-validations)
-                        (b/validate % list-validations)
+                        (b/valid? % documentation-validations)
+                        (b/valid? % prompt-validations)
+                        (b/valid? % content-validations)
+                        (b/valid? % key-validations)
+                        (b/valid? % property-validations)
+                        (b/valid? % permission-validations)
+                        (b/valid? % form-validations)
+                        (b/valid? % page-validations)
+                        (b/valid? % list-validations)
                         )]]})
 
 (def application-validations
@@ -403,12 +570,14 @@
    [:attrs :revision] v/string
    [:attrs :currency] v/string
    :content [[v/every #(or
-                        (b/validate % specification-validations)
-                        (b/validate % documentation-validations)
-                        (b/validate % content-validations)
-                        (b/validate % typedef-validations)
-                        (b/validate % group-validations)
-                        (b/validate % entity-validations))]]})
+                        (b/valid? % specification-validations)
+                        (b/valid? % documentation-validations)
+                        (b/valid? % content-validations)
+                        (b/valid? % typedef-validations)
+                        (b/valid? % group-validations)
+                        (b/valid? % entity-validations))]]})
 
-
+;; the good news: it's complete.
+;; the bad news: it doesn't yet work.
+;; TODO: write a function which takes the output of bouncer.core.validate and filters out the paths to those bits which failed.
 
