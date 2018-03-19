@@ -14,3 +14,7 @@ target/
 queries\.auto\.sql
 
 auto_json_routes\.clj
+
+\.idea/
+
+*.iml
