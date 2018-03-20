@@ -33,15 +33,19 @@
   ;; OK, so: most of the validators will (usually) fail, and that's OK. How
   ;; do we identify the one which ought not to have failed?
   [o & validations]
+  (println (str "Tag: " (:tag o) "; name: " (:name (:attrs o))))
   (let
     [rs (map
          #(b/validate o %)
-         validations)]
+         validations)
+     all-candidates (remove nil? (map first rs))
+     suspicious (remove :tag all-candidates)]
     ;; if *any* succeeded, we succeeded
     ;; otherwise, one of these is the valid error - but which? The answer, in my case
     ;; is that if there is any which did not fail on the :tag check, then that is the
     ;; interesting one. But generally?
-    (empty? (remove :tag (map first rs)))))
+    (doall (map #(println (str "\tError: " %)) suspicious))
+    (empty? suspicious)))
 
 (v/defvalidator disjunct-validator
   ;; OK, so: most of the validators will (usually) fail, and that's OK. How
