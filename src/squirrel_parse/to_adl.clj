@@ -115,7 +115,7 @@
           {:tag :prompt
            :attrs
            {:prompt name
-            :local "en-GB"}}}}}})))
+            :locale "en-GB"}}}}}})))
 
 
 (defn make-entity-map [table-decl]

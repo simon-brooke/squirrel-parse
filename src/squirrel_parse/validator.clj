@@ -2,7 +2,6 @@
       :author "Simon Brooke"}
   squirrel-parse.validator
   (:require [clojure.set :refer [union]]
-            [clojure.string :as s]
             [bouncer.core :as b]
             [bouncer.validators :as v]))
 
@@ -30,7 +29,37 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-;;; this is a fairly straight translation of the ADL 1.4 DTD into Clojure
+(defn disjunct-validate
+  ;; OK, so: most of the validators will (usually) fail, and that's OK. How
+  ;; do we identify the one which ought not to have failed?
+  [o & validations]
+  (let
+    [rs (map
+         #(b/validate o %)
+         validations)]
+    ;; if *any* succeeded, we succeeded
+    ;; otherwise, one of these is the valid error - but which? The answer, in my case
+    ;; is that if there is any which did not fail on the :tag check, then that is the
+    ;; interesting one. But generally?
+    (empty? (remove :tag (map first rs)))))
+
+(v/defvalidator disjunct-validator
+  ;; OK, so: most of the validators will (usually) fail, and that's OK. How
+  ;; do we identify the one which ought not to have failed?
+  {:optional false}
+  [value & validations]
+  (let
+    [rs (map
+         #(b/validate value %)
+         validations)]
+    ;; if *any* succeeded, we succeeded
+    ;; otherwise, one of these is the valid error - but which? The answer, in my case
+    ;; is that if there is any which did not fail on the :tag check, then that is the
+    ;; interesting one. But generally?
+    (empty? (remove :tag (map first rs)))))
+
+;;; the remainder of this file is a fairly straight translation of the ADL 1.4 DTD into Clojure
+
 
 (declare fieldgroup-validations)
 
@@ -241,9 +270,9 @@
   {:tag [v/required [#(= % :generator)]]
    [:attrs :action] [v/string v/required [v/member generator-actions]]
    [:attrs :class] v/string
-   :content [[v/every #(or
-                        (b/valid? % documentation-validations)
-                        (b/valid? % param-validations))]]})
+   :content [[v/every #(disjunct-validate %
+                         documentation-validations
+                         param-validations)]]})
 
 
 (def in-implementation-validations
@@ -354,23 +383,26 @@
    [:attrs :distinct] [v/string [v/member #{"none", "all", "user", "system"}]]
    [:attrs :entity] v/string
    [:attrs :farkey] v/string
-   [:attrs :required] v/boolean
-   [:attrs :immutable] v/boolean
-   [:attrs :size] [[#(if
+   [:attrs :required] [[v/member #{"true", "false"}]]
+   [:attrs :immutable] [[v/member #{"true", "false"}]]
+   [:attrs :size] [[#(cond
+                      (empty? %) ;; it's allowed to be missing
+                      true
                        (string? %)
                        (integer? (read-string %))
+                      true
                        (integer? %))]]
    [:attrs :column] v/string
-   [:attrs :concrete] v/boolean
+   [:attrs :concrete] [[v/member #{"true", "false"}]]
    [:attrs :cascade] [[v/member cascade-actions]]
-   :content [[v/every #(or
-                        (b/valid? % documentation-validations)
-                        (b/valid? % generator-validations)
-                        (b/valid? % permission-validations)
-                        (b/valid? % option-validations)
-                        (b/valid? % prompt-validations)
-                        (b/valid? % help-validations)
-                        (b/valid? % ifmissing-validations))]]})
+   :content [[v/every #(disjunct-validate %
+                         documentation-validations
+                         generator-validations
+                         permission-validations
+                         option-validations
+                         prompt-validations
+                         help-validations
+                         ifmissing-validations)]]})
 
 
 (def permission-validations
@@ -418,7 +450,7 @@
   * `dangerous`  true if this verb causes a destructive change."
   {:tag [v/required [#(= % :verb)]]
    [:attrs :verb] [v/string v/required]
-   [:attrs :dangerous] [v/boolean v/required]})
+   [:attrs :dangerous] [[v/member #{"true", "false"}] v/required]})
 
 (def order-validations
   "an ordering or records in a list
@@ -472,36 +504,35 @@
   {:tag [v/required [#(= % :form)]]
    [:attrs :name] [v/required v/string]
    [:attrs :properties] [v/required [v/member #{"all", "user-distinct", "listed"}]]
-   [:attrs :canadd] v/boolean
-   :content [[v/every #(or
-                         (b/valid? % documentation-validations)
-                         (b/valid? % head-validations)
-                         (b/valid? % top-validations)
-                         (b/valid? % foot-validations)
-                         (b/valid? % field-validations)
-                         (b/valid? % fieldgroup-validations)
-                         (b/valid? % auxlist-validations)
-                         (b/valid? % verb-validations)
-                         (b/valid? % permission-validations)
-                         (b/valid? % pragma-validations))]]})
+   [:attrs :canadd] [[v/member #{"true", "false"}]]
+   :content [[v/every #(disjunct-validate %
+                          documentation-validations
+                          head-validations
+                          top-validations
+                          foot-validations
+                          field-validations
+                          fieldgroup-validations
+                          auxlist-validations
+                          verb-validations
+                          permission-validations
+                          pragma-validations)]]})
 
 (def page-validations
   "a page on which an entity may be displayed"
   {:tag [v/required [#(= % :page)]]
    [:attrs :name] [v/required v/string]
    [:attrs :properties] [v/required [v/member #{"all", "user-distinct", "listed"}]]
-   :content [[v/every #(or
-                         (b/valid? % documentation-validations)
-                         (b/valid? % head-validations)
-                         (b/valid? % top-validations)
-                         (b/valid? % foot-validations)
-                         (b/valid? % field-validations)
-                         (b/valid? % fieldgroup-validations)
-                         (b/valid? % auxlist-validations)
-                         (b/valid? % verb-validations)
-                         (b/valid? % permission-validations)
-                         (b/valid? % pragma-validations)
-                         )]]})
+   :content [[v/every #(disjunct-validate %
+                          documentation-validations
+                          head-validations
+                          top-validations
+                          foot-validations
+                          field-validations
+                          fieldgroup-validations
+                          auxlist-validations
+                          verb-validations
+                          permission-validations
+                          pragma-validations)]]})
 
 (def list-validations
   "a list on which entities of a given type are listed
@@ -512,19 +543,18 @@
    [:attrs :name] [v/required v/string]
    [:attrs :properties] [v/required [v/member #{"all", "user-distinct", "listed"}]]
    [:attrs :onselect] v/string
-   :content [[v/every #(or
-                         (b/valid? % documentation-validations)
-                         (b/valid? % head-validations)
-                         (b/valid? % top-validations)
-                         (b/valid? % foot-validations)
-                         (b/valid? % field-validations)
-                         (b/valid? % fieldgroup-validations)
-                         (b/valid? % auxlist-validations)
-                         (b/valid? % verb-validations)
-                         (b/valid? % permission-validations)
-                         (b/valid? % pragma-validations)
-                         (b/valid? % order-validations)
-                         )]]})
+   :content [[v/every #(disjunct-validate %
+                          documentation-validations
+                          head-validations
+                          top-validations
+                          foot-validations
+                          field-validations
+                          fieldgroup-validations
+                          auxlist-validations
+                          verb-validations
+                          permission-validations
+                          pragma-validations
+                          order-validations)]]})
 
 (def key-validations
   {:tag [v/required [#(= % :key)]]
@@ -550,18 +580,17 @@
    [:attrs :name] [v/required v/string]
    [:attrs :natural-key] v/string
    [:attrs :table] v/string
-   [:attrs :foreign] v/boolean
-   :content [[v/every #(or
-                        (b/valid? % documentation-validations)
-                        (b/valid? % prompt-validations)
-                        (b/valid? % content-validations)
-                        (b/valid? % key-validations)
-                        (b/valid? % property-validations)
-                        (b/valid? % permission-validations)
-                        (b/valid? % form-validations)
-                        (b/valid? % page-validations)
-                        (b/valid? % list-validations)
-                        )]]})
+   [:attrs :foreign] [[v/member #{"true", "false"}]]
+   :content [[v/every #(disjunct-validate %
+                         documentation-validations
+                         prompt-validations
+                         content-validations
+                         key-validations
+                         property-validations
+                         permission-validations
+                         form-validations
+                         page-validations
+                         list-validations)]]})
 
 (def application-validations
   {:tag [v/required [#(= % :application)]]
@@ -569,15 +598,62 @@
    [:attrs :version] v/string
    [:attrs :revision] v/string
    [:attrs :currency] v/string
-   :content [[v/every #(or
-                        (b/valid? % specification-validations)
-                        (b/valid? % documentation-validations)
-                        (b/valid? % content-validations)
-                        (b/valid? % typedef-validations)
-                        (b/valid? % group-validations)
-                        (b/valid? % entity-validations))]]})
+   :content [[v/every #(disjunct-validate %
+                         specification-validations
+                         documentation-validations
+                         content-validations
+                         typedef-validations
+                         group-validations
+                         entity-validations)]]})
 
 ;; the good news: it's complete.
 ;; the bad news: it doesn't yet work.
 ;; TODO: write a function which takes the output of bouncer.core.validate and filters out the paths to those bits which failed.
 
+(defn find-keys
+  [o p]
+  (cond
+   (map? o)
+   (reduce
+    merge
+    {}
+    (map
+     (fn [k]
+       (let [tail (find-keys (o k) p)] ;; error is here
+        (cond
+         (not (empty? tail))
+         {k tail}
+         (p k)
+         {k (o k)}
+         true
+         {})))
+     (keys o)))
+   (coll? o)
+   (remove empty? (map #(find-keys % p) o))))
+
+(defn walk-find-keys
+  [o p]
+  (walk
+   #(do %)
+   #(cond
+     (map? %)
+     (reduce
+      {}
+      (remove
+        empty?
+       (map
+        (fn [k]
+          (cond
+           (p k)
+           {k (% k)}
+           (walk-find-keys (% k) p)
+           {k (walk-find-keys (% k) p)}))
+        (keys %))))
+     (coll? %)
+     (remove
+      empty?
+      (map
+       (fn [e]
+         (walk-find-keys e p))
+       %)))
+   o))
